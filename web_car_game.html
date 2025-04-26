@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hand Gesture Car Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #111;
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      gap: 20px;
+      flex-direction: column;
+    }
+    h1 {
+      font-family: sans-serif;
+      font-size: 24px;
+      margin: 0;
+    }
+    /* Hide the raw video element */
+    video {
+      display: none;
+    }
+    /* Canvases side by side */
+    .container {
+      display: flex;
+      gap: 20px;
+    }
+    #handCanvas, #gameCanvas {
+      width: 640px;
+      height: 480px;
+      background: #222;
+      border-radius: 10px;
+      border: 2px solid #444;
+    }
+  </style>
+</head>
+<body>
+  <h1>🖐️ Hand Gesture Car Game</h1>
+  <div class="container">
+    <!-- hidden video feeds into handCanvas -->
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="handCanvas" width="640" height="480"></canvas>
+
+    <!-- game canvas next to it -->
+    <canvas id="gameCanvas" width="640" height="480"></canvas>
+  </div>
+
+  <!-- MediaPipe + TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js"></script>
+
+  <script>
+    // Elements
+    const video = document.getElementById('video');
+    const handCanvas = document.getElementById('handCanvas');
+    const handCtx = handCanvas.getContext('2d');
+    const gameCanvas = document.getElementById('gameCanvas');
+    const gameCtx = gameCanvas.getContext('2d');
+
+    // Game state
+    const car = { x: 320, y: 420, w: 60, h: 30, color: 'red' };
+    let move = 'stop';
+
+    // Draw and update game
+    function drawGame() {
+      gameCtx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+      gameCtx.fillStyle = car.color;
+      gameCtx.fillRect(car.x, car.y, car.w, car.h);
+    }
+    function updateGame() {
+      if (move === 'left')  car.x -= 5;
+      if (move === 'right') car.x += 5;
+      car.x = Math.max(0, Math.min(gameCanvas.width - car.w, car.x));
+    }
+    function gameLoop() {
+      updateGame();
+      drawGame();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Count extended fingers
+    function countFingers(landmarks) {
+      const tips = [8,12,16,20];
+      let cnt = 0;
+      tips.forEach(i => {
+        if (landmarks[i].y < landmarks[i-2].y) cnt++;
+      });
+      return cnt;
+    }
+
+    // MediaPipe Hands setup
+    const hands = new Hands({
+      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 0,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+
+    hands.onResults(results => {
+      // draw camera frame onto handCanvas
+      handCtx.clearRect(0,0,handCanvas.width,handCanvas.height);
+      handCtx.drawImage(results.image, 0, 0, handCanvas.width, handCanvas.height);
+
+      if (results.multiHandLandmarks.length) {
+        const lm = results.multiHandLandmarks[0];
+        drawConnectors(handCtx, lm, HAND_CONNECTIONS, { color:'#0f0', lineWidth:3 });
+        drawLandmarks(handCtx, lm, { color:'#f00', lineWidth:2 });
+        const f = countFingers(lm);
+        move = (f===1) ? 'left' : (f===2) ? 'right' : 'stop';
+      } else {
+        move = 'stop';
+      }
+    });
+
+    // Start camera and game
+    const camera = new Camera(video, {
+      onFrame: async () => { await hands.send({ image: video }); },
+      width: 640, height: 480
+    });
+    camera.start();
+    gameLoop();
+  </script>
+</body>
+</html>
